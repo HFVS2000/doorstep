@@ -16,6 +16,16 @@ npm run build    # production build in dist/
 Hosted on Vercel, which rebuilds and redeploys automatically on every push to `main`.
 Vercel settings: framework Vite, build command `npm run build`, output folder `dist` (all detected automatically).
 
+## Tests
+
+```bash
+npm test          # logic: bank check, age, phone, email, address loading
+npm run test:e2e  # the whole app in a browser, at tablet landscape, tablet portrait and phone sizes
+```
+
+The browser tests fake the map tiles and address services, so they run the same every time and need no internet.
+GitHub runs both on every push (`.github/workflows/test.yml`).
+
 ## How it fits together
 
 | Part | File | Today | For production |

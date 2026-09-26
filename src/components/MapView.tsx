@@ -120,6 +120,8 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
         onNeedDoors({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() });
       }
     };
+    // with no signal, map tiles fail to load; the map keeps what it has, so don't flood the console
+    m.on('error', (e) => { if (navigator.onLine) console.warn('[map]', e.error?.message ?? e); });
     m.on('load', report);
     m.on('moveend', report);
     // tapping the map itself (not a pin) drops a new pin on that house
@@ -204,10 +206,10 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
     <>
       <div ref={box} className="absolute inset-0" />
       {gpsError && (
-        <div className="absolute left-3 top-3 rounded-[10px] bg-ink text-white px-3 py-2 text-[15px] font-bold max-w-[70%]">{gpsError}</div>
+        <div className="absolute left-3 top-3 z-10 rounded-[10px] bg-ink text-white px-3 py-2 text-[15px] font-bold max-w-[70%]">{gpsError}</div>
       )}
       {!hideControls && (
-        <div className="absolute right-3 bottom-8 flex flex-col gap-2">
+        <div className="absolute right-3 bottom-8 z-10 flex flex-col gap-2">
           <button type="button" onClick={switchLook} aria-label={look === 'satellite' ? 'Show street map' : 'Show satellite'}
             className="w-16 h-16 rounded-[14px] bg-white border-[3px] border-ink flex flex-col items-center justify-center shadow-[0_4px_0_#0A0A0A] text-[12px] font-bold uppercase leading-none gap-1">
             <Layers size={24} strokeWidth={2.5} />{look === 'satellite' ? 'Map' : 'Aerial'}

@@ -6,6 +6,7 @@ import {
 import { activeClient, type Frequency } from '../config/client';
 import type { Door } from '../lib/addresses';
 import { validateBankDetails } from '../lib/banks';
+import { ageFrom, isEmail, isUkMobile } from '../lib/validate';
 import SignaturePad from './SignaturePad';
 import { Chip, Label, SectionHead, Tick } from './ui';
 import { doorTitle } from './DoorSheets';
@@ -37,17 +38,6 @@ export const blankForm = (door: Door): SignupForm => {
   };
 };
 
-const ageFrom = (dd: string, mm: string, yyyy: string) => {
-  const d = +dd, m = +mm, y = +yyyy;
-  if (!d || !m || yyyy.length !== 4 || m > 12 || d > 31) return null;
-  const dob = new Date(y, m - 1, d);
-  if (dob.getMonth() !== m - 1) return null;
-  const now = new Date();
-  let age = now.getFullYear() - y;
-  const md = now.getMonth() - (m - 1);
-  if (md < 0 || (md === 0 && now.getDate() < d)) age--;
-  return age;
-};
 
 interface Props {
   door: Door;
@@ -78,8 +68,8 @@ export default function PitchPanel({ door, form, setForm, online, onClose, onSub
   const bank = validateBankDetails(sortDigits, acct);
   const age = ageFrom(form.dd, form.mm, form.yyyy);
   const ageOk = age !== null && age >= client.minAge && age < 120;
-  const mobileOk = /^07\d{9}$/.test(form.mobile.replace(/\s/g, ''));
-  const emailOk = form.email === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  const mobileOk = isUkMobile(form.mobile);
+  const emailOk = form.email.trim() === '' || isEmail(form.email);
 
   const missing = [
     !form.title && 'title', !form.first.trim() && 'first name', !form.last.trim() && 'last name',

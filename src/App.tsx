@@ -30,6 +30,8 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [loadingDoors, setLoadingDoors] = useState(false);
   const [zoom, setZoom] = useState(17);
+  // the colour key covers too much of a phone screen, so it starts folded away there
+  const [showKey, setShowKey] = useState(() => window.innerWidth >= 640);
   const toastTimer = useRef<number>();
   const loaded = useRef<Bounds[]>([]);
   const inflight = useRef<AbortController | null>(null);
@@ -149,6 +151,11 @@ export default function App() {
   };
 
   const panelOpen = !!(pitchDoor && form);
+  // when the form stacks under the map (portrait or phone), bring it into view as it opens
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (pitchId && window.innerWidth < 1024) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [pitchId]);
 
   return (
     <div className="min-h-full lg:h-full flex flex-col gap-3 px-4 py-3">
@@ -164,9 +171,9 @@ export default function App() {
             <div className="text-[13px] text-accent font-bold uppercase tracking-[.12em]">{activeClient.orgName}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap tnum" aria-label="Today's doors">
+        <div className="order-3 sm:order-2 w-full sm:w-auto flex items-center gap-2 tnum" aria-label="Today's doors">
           {([['signed', 'Signed'], ['cb', 'Callback'], ['na', 'No answer'], ['ni', 'Not int.']] as const).map(([k, l]) => (
-            <div key={k} title={l} className="flex items-center gap-2 min-h-[48px] px-3 rounded-[10px] bg-[#1C1C1C] text-white">
+            <div key={k} title={l} className="flex-1 sm:flex-none flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[48px] px-3 rounded-[10px] bg-[#1C1C1C] text-white">
               <span className="w-5 h-5 rounded-full border-2 border-white" style={{ background: STATUS[k].bg }} />
               <span className="font-display font-extrabold text-[26px] leading-none">{counts[k]}</span>
               <span className="text-[14px] font-bold uppercase tracking-[.06em] hidden 2xl:inline">{l}</span>
@@ -175,21 +182,21 @@ export default function App() {
         </div>
         <button type="button" onClick={() => store.setForcedOffline(!store.forcedOffline)} aria-pressed={!online}
           title="Tap to test offline mode"
-          className={`min-h-[56px] px-4 rounded-[12px] border-[3px] flex items-center gap-2.5 font-bold text-[18px] ${online ? 'bg-white text-ink border-white' : 'bg-accent text-ink border-accent'}`}>
+          className={`order-2 sm:order-3 min-h-[56px] px-4 rounded-[12px] border-[3px] flex items-center gap-2.5 font-bold text-[18px] ${online ? 'bg-white text-ink border-white' : 'bg-accent text-ink border-accent'}`}>
           {syncing ? <LoaderCircle size={26} className="animate-spin" /> : online ? <Wifi size={26} strokeWidth={2.5} /> : <WifiOff size={26} strokeWidth={2.5} />}
           <span className="leading-tight text-left">
             {syncing ? 'Sending…' : online ? (outbox.length ? `Online · ${outbox.length} to send` : 'Online · synced') : `Offline · ${outbox.length} saved on tablet`}
-            <span className="block text-[12px] font-bold uppercase tracking-[.08em] opacity-70">{store.forcedOffline ? 'Test mode · tap to go online' : 'Tap to test offline'}</span>
+            <span className="hidden sm:block text-[12px] font-bold uppercase tracking-[.08em] opacity-70">{store.forcedOffline ? 'Test mode · tap to go online' : 'Tap to test offline'}</span>
           </span>
         </button>
       </header>
 
-      <main className={`lg:flex-1 lg:min-h-0 grid gap-3 ${panelOpen ? 'grid-rows-[minmax(420px,55vh)_auto] lg:grid-rows-1 lg:grid-cols-[55fr_45fr]' : 'grid-cols-1 min-h-[70vh]'}`}>
-        <section className="relative rounded-[18px] overflow-hidden border-[4px] border-white bg-[#EEF0EA] min-h-[420px]" aria-label="Territory map">
+      <main className={`lg:flex-1 lg:min-h-0 grid gap-3 ${panelOpen ? 'grid-rows-[minmax(320px,40vh)_auto] lg:grid-rows-1 lg:grid-cols-[55fr_45fr]' : 'grid-cols-1 min-h-[70vh]'}`}>
+        <section className="relative rounded-[18px] overflow-hidden border-[4px] border-white bg-[#EEF0EA] min-h-[320px]" aria-label="Territory map">
           <MapView doors={doors} logs={logs} selectedId={selectedId} pitchId={pitchId} hideControls={!!sheet}
             onPick={pick} onNeedDoors={needDoors} onZoomChange={setZoom} onAddDoor={addDoor} />
 
-          <div className="absolute left-1/2 -translate-x-1/2 top-3 flex flex-col items-center gap-2 pointer-events-none">
+          <div className="absolute left-1/2 -translate-x-1/2 top-3 z-10 flex flex-col items-center gap-2 pointer-events-none">
             {zoom < MIN_DOOR_ZOOM && (
               <div className="rounded-[12px] bg-ink text-white px-4 py-2.5 font-bold text-[17px] flex items-center gap-2"><ZoomIn size={22} /> Zoom in to see doors</div>
             )}
@@ -198,8 +205,11 @@ export default function App() {
             )}
           </div>
 
-          {!sheet && (
-            <div className="absolute left-3 bottom-8 rounded-[12px] bg-white border-[3px] border-ink px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 text-[15px] font-bold max-w-[calc(100%-110px)]">
+          {!sheet && !showKey && (
+            <button type="button" onClick={() => setShowKey(true)} className="absolute left-3 bottom-8 z-10 min-h-[52px] px-4 rounded-[12px] bg-white border-[3px] border-ink font-bold text-[16px]">Key</button>
+          )}
+          {!sheet && showKey && (
+            <div onClick={() => window.innerWidth < 640 && setShowKey(false)} className="absolute left-3 bottom-8 z-10 rounded-[12px] bg-white border-[3px] border-ink px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 text-[15px] font-bold max-w-[calc(100%-110px)]">
               {(['signed', 'ni', 'na', 'cb', 'none'] as DoorStatus[]).map((k) => (
                 <span key={k} className="flex items-center gap-1.5">
                   <svg viewBox="0 0 56 70" width="16" height="20" aria-hidden="true"><path d="M28 68 C24 58 4 42 4 26 A24 24 0 1 1 52 26 C52 42 32 58 28 68Z" fill={STATUS[k].bg} stroke="#0A0A0A" strokeWidth="6" /></svg>
@@ -229,7 +239,7 @@ export default function App() {
         </section>
 
         {panelOpen && (
-          <aside key={pitchId} className="slide-in rounded-[18px] overflow-hidden border-[4px] border-white h-[88vh] lg:h-auto lg:min-h-0" aria-label="Direct Debit sign-up">
+          <aside key={pitchId} ref={panelRef} className="slide-in rounded-[18px] overflow-hidden border-[4px] border-white h-[88vh] lg:h-auto lg:min-h-0" aria-label="Direct Debit sign-up">
             <PitchPanel door={pitchDoor!} form={form!} setForm={(fn) => setForm((f) => (f ? fn(f) : f))} online={online} onClose={closePanel} onSubmit={submitSignup} />
           </aside>
         )}
