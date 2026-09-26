@@ -5,15 +5,39 @@ type Marker = maplibregl.Marker;
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Bundle MapLibre's web worker with Vite so it loads from our own assets.
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { LocateFixed, Minus, Plus } from 'lucide-react';
+import { Layers, LocateFixed, Minus, Plus } from 'lucide-react';
 import type { Bounds, Door } from '../lib/addresses';
 import type { DoorLog } from '../lib/store';
 import { STATUS } from '../lib/status';
 import { activeClient } from '../config/client';
 
-// Free OpenStreetMap vector tiles, no API key. Swap for Mapbox, MapTiler or
-// Ordnance Survey by changing this one URL.
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+// Street map: free OpenStreetMap vector tiles, no API key.
+const STREET_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+
+// Satellite: Esri World Imagery with Esri's road and place-name overlays on top.
+// Free to use with attribution; for heavy commercial use, create a free
+// ArcGIS Location Platform account, or swap in Mapbox / Google satellite tiles.
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const raster = (path: string, maxzoom = 19) => ({
+  type: 'raster' as const,
+  tiles: [`${ESRI}/${path}/MapServer/tile/{z}/{y}/{x}`],
+  tileSize: 256,
+  maxzoom,
+});
+const SATELLITE_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    imagery: { ...raster('World_Imagery'), attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' },
+    roads: raster('Reference/World_Transportation'),
+    places: raster('Reference/World_Boundaries_and_Places'),
+  },
+  layers: [
+    { id: 'imagery', type: 'raster', source: 'imagery' },
+    { id: 'roads', type: 'raster', source: 'roads', paint: { 'raster-opacity': 0.85 } },
+    { id: 'places', type: 'raster', source: 'places' },
+  ],
+};
+export type MapLook = 'satellite' | 'street';
 export const MIN_DOOR_ZOOM = 16;
 maplibregl.setWorkerUrl(mapWorkerUrl);
 
@@ -30,8 +54,8 @@ function paintPin(el: HTMLElement, door: Door, log: DoorLog | undefined, selecte
   el.style.width = `${w}px`;
   el.style.height = `${h}px`;
   el.style.zIndex = big ? '5' : '1';
-  el.setAttribute('aria-label', `${door.number} ${door.street}, ${s.label}`);
-  const num = esc(door.number.slice(0, 4));
+  el.setAttribute('aria-label', `${`${door.number} ${door.street}`.trim() || 'House'}, ${s.label}`);
+  const num = door.number ? esc(door.number.slice(0, 4)) : '';
   el.innerHTML = `
     <svg viewBox="0 0 56 70" width="${w}" height="${h}" style="position:absolute;inset:0;overflow:visible">
       ${ring ? `<circle cx="28" cy="26" r="31" fill="${ring}" stroke="#0A0A0A" stroke-width="3"/>` : ''}
@@ -52,9 +76,10 @@ interface Props {
   onPick: (id: string) => void;
   onNeedDoors: (b: Bounds) => void;
   onZoomChange: (z: number) => void;
+  onAddDoor: (lng: number, lat: number) => void;
 }
 
-export default function MapView({ doors, logs, selectedId, pitchId, hideControls, onPick, onNeedDoors, onZoomChange }: Props) {
+export default function MapView({ doors, logs, selectedId, pitchId, hideControls, onPick, onNeedDoors, onZoomChange, onAddDoor }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const markers = useRef(new Map<string, { marker: Marker; el: HTMLButtonElement }>());
@@ -64,13 +89,18 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
   const [gpsError, setGpsError] = useState<string | null>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
+  const addRef = useRef(onAddDoor);
+  addRef.current = onAddDoor;
+  const [look, setLook] = useState<MapLook>(() => {
+    try { return (localStorage.getItem('doorstep.look') as MapLook) || 'satellite'; } catch { return 'satellite'; }
+  });
 
   // create the map once
   useEffect(() => {
     if (!box.current) return;
     const m = new maplibregl.Map({
       container: box.current,
-      style: MAP_STYLE,
+      style: look === 'satellite' ? SATELLITE_STYLE : STREET_STYLE,
       center: activeClient.defaultCentre,
       zoom: 17,
       maxZoom: 20,
@@ -92,6 +122,12 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
     };
     m.on('load', report);
     m.on('moveend', report);
+    // tapping the map itself (not a pin) drops a new pin on that house
+    m.on('click', (e) => {
+      if ((e.originalEvent.target as HTMLElement | null)?.closest?.('.door-pin')) return;
+      if (m.getZoom() < MIN_DOOR_ZOOM - 0.5) return;
+      addRef.current(e.lngLat.lng, e.lngLat.lat);
+    });
 
     // live GPS position
     const dot = document.createElement('div');
@@ -151,6 +187,13 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
     markers.current.forEach(({ el }) => (el.style.visibility = hidden ? 'hidden' : 'visible'));
   }, [zoom, doors]);
 
+  const switchLook = () => {
+    const next: MapLook = look === 'satellite' ? 'street' : 'satellite';
+    setLook(next);
+    try { localStorage.setItem('doorstep.look', next); } catch { /* ignore */ }
+    map.current?.setStyle(next === 'satellite' ? SATELLITE_STYLE : STREET_STYLE);
+  };
+
   const zoomBy = (d: number) => map.current?.easeTo({ zoom: map.current.getZoom() + d, duration: 250 });
   const locate = () => {
     if (myPos.current) map.current?.easeTo({ center: myPos.current, zoom: Math.max(17, map.current.getZoom()) });
@@ -165,6 +208,10 @@ export default function MapView({ doors, logs, selectedId, pitchId, hideControls
       )}
       {!hideControls && (
         <div className="absolute right-3 bottom-8 flex flex-col gap-2">
+          <button type="button" onClick={switchLook} aria-label={look === 'satellite' ? 'Show street map' : 'Show satellite'}
+            className="w-16 h-16 rounded-[14px] bg-white border-[3px] border-ink flex flex-col items-center justify-center shadow-[0_4px_0_#0A0A0A] text-[12px] font-bold uppercase leading-none gap-1">
+            <Layers size={24} strokeWidth={2.5} />{look === 'satellite' ? 'Map' : 'Aerial'}
+          </button>
           <div className="flex flex-col rounded-[14px] bg-white border-[3px] border-ink overflow-hidden shadow-[0_4px_0_#0A0A0A]">
             <button type="button" aria-label="Zoom in" onClick={() => zoomBy(1)} className="w-16 h-16 grid place-items-center active:bg-accent-soft"><Plus size={32} strokeWidth={3} /></button>
             <div className="h-[3px] bg-ink" />

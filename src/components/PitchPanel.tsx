@@ -31,7 +31,7 @@ export const blankForm = (door: Door): SignupForm => {
     programme: p.id, entry: p.entries?.[0]?.id ?? '', amount: client.programmes.find((x) => x.amounts)?.amounts?.[1] ?? 10,
     freq: p.frequencies[0], day: client.collectionDays[0],
     title: '', first: '', last: '', dd: '', mm: '', yyyy: '',
-    mobile: '', email: '', addr1: doorTitle(door), town: door.town, postcode: door.postcode,
+    mobile: '', email: '', addr1: `${door.number} ${door.street}`.trim(), town: door.town, postcode: door.postcode,
     sort: '', account: '',
     giftAid: false, holder: false, lotteryRules: false, terms: false, privacy: false, contact: [],
   };

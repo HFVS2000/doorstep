@@ -6,7 +6,7 @@ import { STATUS } from '../lib/status';
 import { Chip } from './ui';
 
 const sheet = 'pop absolute left-3 right-3 bottom-3 z-10 rounded-[16px] bg-white border-[4px] border-ink p-4 shadow-[0_6px_0_#0A0A0A]';
-export const doorTitle = (d: Door) => `${d.number} ${d.street}`.trim();
+export const doorTitle = (d: Door) => `${d.number} ${d.street}`.trim() || 'House (finding address…)';
 
 export function QuickMenu({ door, log, onPitch, onNoAnswer, onNotInterested, onClose }: {
   door: Door; log?: DoorLog; onPitch: () => void; onNoAnswer: () => void; onNotInterested: () => void; onClose: () => void;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleCheck, CloudUpload, LoaderCircle, Undo2, Wifi, WifiOff, ZoomIn } from 'lucide-react';
 import { activeClient } from './config/client';
-import { fetchDoors, type Bounds } from './lib/addresses';
+import { fetchDoors, lookupAddress, type Bounds, type Door } from './lib/addresses';
 import { useDoorstepStore, type DoorStatus } from './lib/store';
 import { STATUS } from './lib/status';
 import MapView, { MIN_DOOR_ZOOM } from './components/MapView';
@@ -52,7 +52,7 @@ export default function App() {
       const list = await fetchDoors(area, ctrl.signal);
       loaded.current.push(area);
       store.addDoors(list);
-      if (!list.length) showToast({ text: 'No house numbers mapped here yet', sub: 'Try the next street', tone: 'ink' });
+      if (!list.length) showToast({ text: 'No houses mapped here yet', sub: 'Tap a house on the map to add it', tone: 'ink' });
     } catch (e) {
       if ((e as Error).name !== 'AbortError') showToast({ text: 'Couldn’t load addresses', sub: 'Check signal and move the map to retry', tone: 'ink' });
     } finally {
@@ -79,7 +79,40 @@ export default function App() {
   const pitchDoor = pitchId ? doors[pitchId] : null;
   const savedMsg = online ? 'Saved to cloud' : 'Saved on tablet';
 
-  const pick = (id: string) => { setSelectedId(id); setSheet('menu'); };
+  // fill in any missing number, street or postcode the first time a house is opened
+  const complete = useCallback(async (door: Door) => {
+    if (door.number && door.street && door.postcode) return;
+    try {
+      const found = await lookupAddress(door);
+      store.addDoors([{ ...door, ...found }]);
+      setForm((f) => (f && pitchIdRef.current === door.id
+        ? { ...f, addr1: f.addr1 || `${found.number ?? ''} ${found.street ?? ''}`.trim(), town: f.town || found.town || '', postcode: f.postcode || found.postcode || '' }
+        : f));
+    } catch { /* offline: the canvasser can type the address */ }
+  }, [store.addDoors]);
+  const pitchIdRef = useRef<string | null>(null);
+  pitchIdRef.current = pitchId;
+
+  const pick = (id: string) => {
+    setSelectedId(id);
+    setSheet('menu');
+    if (doors[id]) complete(doors[id]);
+  };
+  const addDoor = (lng: number, lat: number) => {
+    // a tap on the map while a menu is open just closes the menu
+    if (sheet) { closeSheet(); return; }
+    // a tap right next to an existing pin opens that house instead of adding another
+    const close = Object.values(doors).find((d) => {
+      const dy = (d.lat - lat) * 110540, dx = (d.lng - lng) * 111320 * Math.cos((lat * Math.PI) / 180);
+      return dx * dx + dy * dy < 7 * 7;
+    });
+    if (close) { pick(close.id); return; }
+    const door: Door = { id: `manual-${crypto.randomUUID()}`, number: '', street: '', postcode: '', town: '', lng, lat };
+    store.addDoors([door]);
+    setSelectedId(door.id);
+    setSheet('menu');
+    complete(door);
+  };
   const closeSheet = () => { setSheet(null); setSelectedId(null); };
 
   const notInterested = () => {
@@ -154,7 +187,7 @@ export default function App() {
       <main className={`lg:flex-1 lg:min-h-0 grid gap-3 ${panelOpen ? 'grid-rows-[minmax(420px,55vh)_auto] lg:grid-rows-1 lg:grid-cols-[55fr_45fr]' : 'grid-cols-1 min-h-[70vh]'}`}>
         <section className="relative rounded-[18px] overflow-hidden border-[4px] border-white bg-[#EEF0EA] min-h-[420px]" aria-label="Territory map">
           <MapView doors={doors} logs={logs} selectedId={selectedId} pitchId={pitchId} hideControls={!!sheet}
-            onPick={pick} onNeedDoors={needDoors} onZoomChange={setZoom} />
+            onPick={pick} onNeedDoors={needDoors} onZoomChange={setZoom} onAddDoor={addDoor} />
 
           <div className="absolute left-1/2 -translate-x-1/2 top-3 flex flex-col items-center gap-2 pointer-events-none">
             {zoom < MIN_DOOR_ZOOM && (
