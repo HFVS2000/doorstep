@@ -13,8 +13,8 @@ npm run dev      # opens on your network too, so a tablet on the same Wi-Fi can 
 npm run build    # production build in dist/
 ```
 
-Pushing to `main` deploys to GitHub Pages (see `.github/workflows/deploy.yml`).
-Turn Pages on once in the repo: Settings → Pages → Source: GitHub Actions.
+Hosted on Vercel, which rebuilds and redeploys automatically on every push to `main`.
+Vercel settings: framework Vite, build command `npm run build`, output folder `dist` (all detected automatically).
 
 ## How it fits together
 
